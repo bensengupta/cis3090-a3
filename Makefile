@@ -2,8 +2,10 @@ clean:
 	rm -f out.png out/*
 
 zip:
+	test -s report.pdf || { echo "report.pdf does not exist, please download from google docs"; exit 1; }
 	zip -r cis3090_a3.zip \
 		README.md \
+		report.pdf \
 		a3.py \
 		pyproject.toml \
 		uv.lock \
