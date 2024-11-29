@@ -38,20 +38,3 @@ Warp 1.4.1 initialized:
      /Users/bsengupta/Library/Caches/warp/1.4.1
 Module __main__ 6d08326 load on device 'cpu' took 1.74 ms  (cached)
 ```
-
-## Checklist
-
-- [?] Each algorithm should be implemented using a dedicated kernel.
-- [ ] Use unsharp marking described in class
-- [x] Compatibility
-  - [x] Grayscale
-  - [x] RGB
-  - [x] RGBA
-- [ ] Report
-  - [ ] Provide any information that we might need when running your code
-  - [ ] Describe which algorithms you have implemented
-  - [ ] Explain how you have implemented the kernel for this algorithm
-        using the Warp API. You can paste the code into the document so
-        you can more clearly explain it.
-  - [ ] Include a description of how you handle the borders.
-- [ ] Bonus marks?
