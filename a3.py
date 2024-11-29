@@ -9,27 +9,44 @@ from PIL import Image
 
 
 def identity_kernel(kernel_size):
+    """
+    Returns a kernel that does not change the input image.
+    """
     kernel = np.zeros((kernel_size, kernel_size))
     kernel[kernel_size // 2, kernel_size // 2] = 1.0
     return kernel
 
 
+def box_blur_kernel(kernel_size):
+    """
+    Returns a simple box blur kernel with the given size.
+    """
+    kernel = np.ones((kernel_size, kernel_size))
+    kernel /= np.sum(kernel)
+    return kernel
+
+
 def gaussian_kernel(kernel_size, sigma=4.0):
+    """
+    Returns a Gaussian kernel with the given size and standard deviation.
+    """
     kernel = np.zeros((kernel_size, kernel_size))
     for i in range(kernel_size):
         for j in range(kernel_size):
             x = i - kernel_size // 2
             y = j - kernel_size // 2
-            kernel[i, j] = (
-                1 / (2 * np.pi * sigma**2) * np.exp(-(x**2 + y**2) / (2 * sigma**2))
-            )
+            kernel[i, j] = np.exp(-(x**2 + y**2) / (2 * sigma**2))
     kernel /= np.sum(kernel)
     return kernel
 
 
 def unsharp_masking_kernel(kernel_size, k=1.0):
+    """
+    Returns a kernel that sharpens the input image with unsharp masking
+    using Box Blur.
+    """
     return identity_kernel(kernel_size) + k * (
-        identity_kernel(kernel_size) - gaussian_kernel(kernel_size)
+        identity_kernel(kernel_size) - box_blur_kernel(kernel_size)
     )
 
 
@@ -39,21 +56,23 @@ def convolve(
     output: wp.array3d(dtype=wp.float32),
     kernel: wp.array2d(dtype=wp.float32),
 ):
-
     kernel_size = kernel.shape[0]
     half_kernel_size = kernel.shape[0] // 2
     width, height = input.shape[0], input.shape[1]
 
     x, y, k = wp.tid()
 
+    # Apply the kernel to the input pixel
     for i in range(kernel_size):
         for j in range(kernel_size):
+            # Edge handling strategy: "extend"
+            # https://en.wikipedia.org/wiki/Kernel_(image_processing)#Edge_handling
             xi = wp.clamp(x + i - half_kernel_size, 0, width - 1)
             yi = wp.clamp(y + j - half_kernel_size, 0, height - 1)
 
             output[x, y, k] += kernel[i, j] * input[xi, yi, k]
 
-    # clamp pixel values
+    # Ensure pixel values are in the range [0, 255]
     output[x, y, k] = wp.clamp(output[x, y, k], 0.0, 255.0)
 
 
