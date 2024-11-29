@@ -8,76 +8,7 @@ import warp as wp
 from PIL import Image
 
 
-def identity_kernel(kernel_size):
-    """
-    Returns a kernel that does not change the input image.
-    """
-    kernel = np.zeros((kernel_size, kernel_size))
-    kernel[kernel_size // 2, kernel_size // 2] = 1.0
-    return kernel
-
-
-def box_blur_kernel(kernel_size):
-    """
-    Returns a simple box blur kernel with the given size.
-    """
-    kernel = np.ones((kernel_size, kernel_size))
-    kernel /= np.sum(kernel)
-    return kernel
-
-
-def gaussian_kernel(kernel_size, sigma=4.0):
-    """
-    Returns a Gaussian kernel with the given size and standard deviation.
-    """
-    kernel = np.zeros((kernel_size, kernel_size))
-    for i in range(kernel_size):
-        for j in range(kernel_size):
-            x = i - kernel_size // 2
-            y = j - kernel_size // 2
-            kernel[i, j] = np.exp(-(x**2 + y**2) / (2 * sigma**2))
-    kernel /= np.sum(kernel)
-    return kernel
-
-
-def unsharp_masking_kernel(kernel_size, k=1.0):
-    """
-    Returns a kernel that sharpens the input image with unsharp masking
-    using Box Blur.
-    """
-    return identity_kernel(kernel_size) + k * (
-        identity_kernel(kernel_size) - box_blur_kernel(kernel_size)
-    )
-
-
-@wp.kernel
-def convolve(
-    input: wp.array3d(dtype=wp.float32),
-    output: wp.array3d(dtype=wp.float32),
-    kernel: wp.array2d(dtype=wp.float32),
-):
-    kernel_size = kernel.shape[0]
-    half_kernel_size = kernel.shape[0] // 2
-    width, height = input.shape[0], input.shape[1]
-
-    x, y, k = wp.tid()
-
-    # Apply the kernel to the input pixel
-    for i in range(kernel_size):
-        for j in range(kernel_size):
-            # Edge handling strategy: "extend"
-            # https://en.wikipedia.org/wiki/Kernel_(image_processing)#Edge_handling
-            xi = wp.clamp(x + i - half_kernel_size, 0, width - 1)
-            yi = wp.clamp(y + j - half_kernel_size, 0, height - 1)
-
-            output[x, y, k] += kernel[i, j] * input[xi, yi, k]
-
-    # Ensure pixel values are in the range [0, 255]
-    output[x, y, k] = wp.clamp(output[x, y, k], 0.0, 255.0)
-
-
-device = "cpu"
-
+# Basic argument checking
 if len(sys.argv) < 6:
     print(
         f"error: expected 6 arguments, received {len(sys.argv)} arguments",
@@ -89,20 +20,107 @@ if len(sys.argv) < 6:
     )
     exit(1)
 
+device = "cpu"
+
+# Parse command line arguments
 alg_type = sys.argv[1]
 kernel_size = int(sys.argv[2])
 param = float(sys.argv[3])
 input_filename = sys.argv[4]
 output_filename = sys.argv[5]
 
+# Validate command line arguments
 assert kernel_size >= 0, "Kernel size must positive"
 assert kernel_size % 2 == 1, "Kernel size must be odd"
 
+
+# Returns the value of the Gaussian matrix at the given position
+# WARN: This matrix is NOT normalized
+@wp.func
+def gaussian_matrix_value(
+    i: wp.int32, j: wp.int32, sigma: wp.float32, kernel_size: wp.int32
+):
+    x = wp.float32(i - kernel_size // 2)
+    y = wp.float32(j - kernel_size // 2)
+
+    return wp.exp(-(x * x + y * y) / (2.0 * sigma * sigma))
+
+
+gaussian_matrix_norm = 0.0
+for i in range(kernel_size):
+    for j in range(kernel_size):
+        gaussian_matrix_norm += gaussian_matrix_value(i, j, param, kernel_size)
+
+
+@wp.kernel
+def gaussian_blur_kernel(
+    input: wp.array3d(dtype=wp.float32),
+    output: wp.array3d(dtype=wp.float32),
+):
+    width, height = input.shape[0], input.shape[1]
+    x, y, k = wp.tid()
+
+    # Apply the kernel to the input pixel
+    for i in range(kernel_size):
+        for j in range(kernel_size):
+            # Edge handling strategy: "extend"
+            # https://en.wikipedia.org/wiki/Kernel_(image_processing)#Edge_handling
+            xi = wp.clamp(x + i - kernel_size // 2, 0, width - 1)
+            yi = wp.clamp(y + j - kernel_size // 2, 0, height - 1)
+
+            matrix_val = (
+                gaussian_matrix_value(i, j, param, kernel_size) / gaussian_matrix_norm
+            )
+
+            output[x, y, k] += matrix_val * input[xi, yi, k]
+
+    # Ensure pixel values are in the range [0, 255]
+    output[x, y, k] = wp.clamp(output[x, y, k], 0.0, 255.0)
+
+
+# Returns the value of the unsharp masking matrix at the given position,
+# using box blur for blurring
+@wp.func
+def unsharp_masking_matrix_value(
+    i: wp.int32, j: wp.int32, amount: wp.float32, kernel_size: wp.int32
+):
+    identity = 0.0
+    if i == kernel_size // 2 and j == kernel_size // 2:
+        identity = 1.0
+    box_blur = 1.0 / wp.float32(kernel_size * kernel_size)
+
+    return identity + amount * (identity - box_blur)
+
+
+@wp.kernel
+def unsharp_masking_kernel(
+    input: wp.array3d(dtype=wp.float32),
+    output: wp.array3d(dtype=wp.float32),
+):
+    width, height = input.shape[0], input.shape[1]
+    x, y, k = wp.tid()
+
+    # Apply the kernel to the input pixel
+    for i in range(kernel_size):
+        for j in range(kernel_size):
+            # Edge handling strategy: "extend"
+            # https://en.wikipedia.org/wiki/Kernel_(image_processing)#Edge_handling
+            xi = wp.clamp(x + i - kernel_size // 2, 0, width - 1)
+            yi = wp.clamp(y + j - kernel_size // 2, 0, height - 1)
+
+            matrix_val = unsharp_masking_matrix_value(i, j, param, kernel_size)
+
+            output[x, y, k] += matrix_val * input[xi, yi, k]
+
+    # Ensure pixel values are in the range [0, 255]
+    output[x, y, k] = wp.clamp(output[x, y, k], 0.0, 255.0)
+
+
 if alg_type == "-s":
-    kernel = unsharp_masking_kernel(kernel_size, k=param)
+    kernel = unsharp_masking_kernel
 elif alg_type == "-n":
     assert param > 0, "sigma parameter must be positive"
-    kernel = gaussian_kernel(kernel_size, sigma=param)
+    kernel = gaussian_blur_kernel
 else:
     raise ValueError(f"Invalid algorithm type: {alg_type}")
 
@@ -112,16 +130,16 @@ input = np.asarray(input_image, dtype=np.uint8)
 if input_image.mode == "L":
     input = input[:, :, np.newaxis]
 
+wp.set_module_options({"enable_backward": False})
 wp.init()
 
 input_wp = wp.array(input, dtype=wp.float32, device=device)
 output_wp = wp.zeros(input_wp.shape, dtype=wp.float32, device=device)
 
-kernel_wp = wp.array2d(kernel, dtype=wp.float32, device=device)
 wp.launch(
-    kernel=convolve,
+    kernel=kernel,
     dim=input_wp.shape,
-    inputs=[input_wp, output_wp, kernel_wp],
+    inputs=[input_wp, output_wp],
     device=device,
 )
 
