@@ -13,7 +13,7 @@ Introduction to GPGPU with Nvidia Warp: Image Processing.
 With python
 
 ```bash
-pip install numpy warp-lang
+pip install numpy warp-lang pillow
 ```
 
 With uv:
