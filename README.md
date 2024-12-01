@@ -10,13 +10,21 @@ Introduction to GPGPU with Nvidia Warp: Image Processing.
 
 ## Setup
 
-With python
+(Option 1) Within the cis3090 docker container:
+
+```bash
+# will install Python venv, create a new venv
+# will use the newly created venv, and install required packages
+./install.sh
+```
+
+(Option 2) With python:
 
 ```bash
 pip install numpy warp-lang pillow
 ```
 
-With uv:
+(Option 3) With uv:
 
 ```bash
 uv sync
