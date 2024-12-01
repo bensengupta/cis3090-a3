@@ -50,9 +50,10 @@ def gaussian_matrix_value(
 
 
 gaussian_matrix_norm = 0.0
-for i in range(kernel_size):
-    for j in range(kernel_size):
-        gaussian_matrix_norm += gaussian_matrix_value(i, j, param, kernel_size)
+if alg_type == "-n":
+    for i in range(kernel_size):
+        for j in range(kernel_size):
+            gaussian_matrix_norm += gaussian_matrix_value(i, j, param, kernel_size)
 
 
 @wp.kernel
