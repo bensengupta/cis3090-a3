@@ -33,6 +33,9 @@ output_filename = sys.argv[5]
 assert kernel_size >= 0, "Kernel size must positive"
 assert kernel_size % 2 == 1, "Kernel size must be odd"
 
+if alg_type == "-n" and param <= 0.0:
+    raise ValueError("Parameter must be positive for gaussian blur")
+
 
 # Returns the value of the Gaussian matrix at the given position
 # WARN: This matrix is NOT normalized
@@ -119,7 +122,6 @@ def unsharp_masking_kernel(
 if alg_type == "-s":
     kernel = unsharp_masking_kernel
 elif alg_type == "-n":
-    assert param > 0, "sigma parameter must be positive"
     kernel = gaussian_blur_kernel
 else:
     raise ValueError(f"Invalid algorithm type: {alg_type}")
