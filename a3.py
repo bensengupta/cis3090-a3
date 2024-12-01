@@ -49,18 +49,16 @@ def gaussian_matrix_value(
     return wp.exp(-(x * x + y * y) / (2.0 * sigma * sigma))
 
 
-gaussian_matrix_norm = 0.0
-if alg_type == "-n":
-    for i in range(kernel_size):
-        for j in range(kernel_size):
-            gaussian_matrix_norm += gaussian_matrix_value(i, j, param, kernel_size)
-
-
 @wp.kernel
 def gaussian_blur_kernel(
     input: wp.array3d(dtype=wp.float32),
     output: wp.array3d(dtype=wp.float32),
 ):
+    gaussian_matrix_norm = 0.0
+    for i in range(kernel_size):
+        for j in range(kernel_size):
+            gaussian_matrix_norm += gaussian_matrix_value(i, j, param, kernel_size)
+
     width, height = input.shape[0], input.shape[1]
     x, y, k = wp.tid()
 
