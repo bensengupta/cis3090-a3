@@ -8,35 +8,6 @@ import warp as wp
 from PIL import Image
 
 
-# Basic argument checking
-if len(sys.argv) < 6:
-    print(
-        f"error: expected 6 arguments, received {len(sys.argv)} arguments",
-        file=sys.stderr,
-    )
-    print(
-        "usage: ./a3.py <algType> <kernSize> <param> <inFileName> <outFileName>",
-        file=sys.stderr,
-    )
-    exit(1)
-
-device = "cpu"
-
-# Parse command line arguments
-alg_type = sys.argv[1]
-kernel_size = int(sys.argv[2])
-param = float(sys.argv[3])
-input_filename = sys.argv[4]
-output_filename = sys.argv[5]
-
-# Validate command line arguments
-assert kernel_size >= 0, "Kernel size must positive"
-assert kernel_size % 2 == 1, "Kernel size must be odd"
-
-if alg_type == "-n" and param <= 0.0:
-    raise ValueError("Parameter must be positive for gaussian blur")
-
-
 # Returns the value of the Gaussian matrix at the given position
 # WARN: This matrix is NOT normalized
 @wp.func
@@ -53,8 +24,10 @@ def gaussian_matrix_value(
 def gaussian_blur_kernel(
     input: wp.array3d(dtype=wp.float32),
     output: wp.array3d(dtype=wp.float32),
+    kernel_size: wp.int32,
+    param: wp.float32,
 ):
-    gaussian_matrix_norm = 0.0
+    gaussian_matrix_norm = float(0.0)
     for i in range(kernel_size):
         for j in range(kernel_size):
             gaussian_matrix_norm += gaussian_matrix_value(i, j, param, kernel_size)
@@ -98,6 +71,8 @@ def unsharp_masking_matrix_value(
 def unsharp_masking_kernel(
     input: wp.array3d(dtype=wp.float32),
     output: wp.array3d(dtype=wp.float32),
+    kernel_size: wp.int32,
+    param: wp.float32,
 ):
     width, height = input.shape[0], input.shape[1]
     x, y, k = wp.tid()
@@ -118,9 +93,35 @@ def unsharp_masking_kernel(
     output[x, y, k] = wp.clamp(output[x, y, k], 0.0, 255.0)
 
 
+# Basic argument checking
+if len(sys.argv) < 6:
+    print(
+        f"error: expected 6 arguments, received {len(sys.argv)} arguments",
+        file=sys.stderr,
+    )
+    print(
+        "usage: ./a3.py <algType> <kernSize> <param> <inFileName> <outFileName>",
+        file=sys.stderr,
+    )
+    exit(1)
+
+device = "cpu"
+
+# Parse command line arguments
+alg_type = sys.argv[1]
+kernel_size = int(sys.argv[2])
+param = float(sys.argv[3])
+input_filename = sys.argv[4]
+output_filename = sys.argv[5]
+
+# Validate command line arguments
+assert kernel_size >= 0, "Kernel size must positive"
+assert kernel_size % 2 == 1, "Kernel size must be odd"
+
 if alg_type == "-s":
     kernel = unsharp_masking_kernel
 elif alg_type == "-n":
+    assert param > 0.0, "Parameter must be positive for gaussian blur"
     kernel = gaussian_blur_kernel
 else:
     raise ValueError(f"Invalid algorithm type: {alg_type}")
@@ -128,11 +129,11 @@ else:
 input_image = Image.open(input_filename)
 input = np.asarray(input_image, dtype=np.uint8)
 
-if input_image.mode == "L":
-    input = input[:, :, np.newaxis]
-
 wp.set_module_options({"enable_backward": False})
 wp.init()
+
+if input_image.mode == "L":
+    input = input[:, :, np.newaxis]
 
 input_wp = wp.array(input, dtype=wp.float32, device=device)
 output_wp = wp.zeros(input_wp.shape, dtype=wp.float32, device=device)
@@ -140,7 +141,7 @@ output_wp = wp.zeros(input_wp.shape, dtype=wp.float32, device=device)
 wp.launch(
     kernel=kernel,
     dim=input_wp.shape,
-    inputs=[input_wp, output_wp],
+    inputs=[input_wp, output_wp, kernel_size, param],
     device=device,
 )
 
