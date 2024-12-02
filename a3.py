@@ -7,7 +7,6 @@ import warp as wp
 
 from PIL import Image
 
-
 # Returns the value of the Gaussian matrix at the given position
 # WARN: This matrix is NOT normalized
 @wp.func
@@ -140,6 +139,26 @@ def bilateral_filter_kernel(
         filtered_value /= bilateral_matrix_norm
     output[x, y, k] = wp.clamp(filtered_value, 0.0, 255.0)
 
+@wp.kernel
+def laplacian_sharpening_kernel(
+    input: wp.array3d(dtype=wp.float32),
+    output: wp.array3d(dtype=wp.float32),
+    kernel_size: wp.int32,
+    laplacian_kernel: wp.array2d(dtype=wp.float32)
+):
+    width, height = input.shape[0], input.shape[1]
+    x, y, k = wp.tid()
+
+    laplacian_result = wp.float32(0.0)
+    for i in range(kernel_size):
+        for j in range(kernel_size):
+            xi = wp.clamp(x + i - kernel_size // 2, 0, width - 1)
+            yi = wp.clamp(y + j - kernel_size // 2, 0, height - 1)
+
+            matrix_val = laplacian_kernel[i, j]
+            laplacian_result += matrix_val * input[xi, yi, k]
+
+    output[x, y, k] = wp.clamp((input[x, y, k] - laplacian_result), 0.0, 255.0)
 
 # START
 # Basic argument checking
@@ -188,6 +207,9 @@ elif alg_type == "-b":
     assert spatial_param > 0.0, "Parameter must be positive for bilateral filter"
     assert intensity_param > 0.0, "Parameter must be positive for bilateral filter"
     kernel = bilateral_filter_kernel
+elif alg_type == "-l":
+    assert kernel_size == 3, "Kernel_size must be 3 for laplacian_sharpening"
+    kernel = laplacian_sharpening_kernel
 else:
     raise ValueError(f"Invalid algorithm type: {alg_type}")
 
@@ -210,6 +232,21 @@ if alg_type == "-b":
         inputs=[input_wp, output_wp, kernel_size, spatial_param, intensity_param],
         device=device,
     )
+elif alg_type == "-l":
+    laplacian_kernel = wp.array(
+        [
+            [0.0, 1.0, 0.0],
+            [1.0, -4.0, 1.0],
+            [0.0, 1.0, 0.0]
+        ], dtype=wp.float32
+    )
+
+    wp.launch(
+        kernel=kernel,
+        dim=input_wp.shape,
+        inputs=[input_wp, output_wp, kernel_size, laplacian_kernel],
+        device=device,
+    )    
 else:
     wp.launch(
         kernel=kernel,
