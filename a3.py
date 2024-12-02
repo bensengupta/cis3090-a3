@@ -49,7 +49,6 @@ def gaussian_blur_kernel(
             matrix_val = (
                 gaussian_matrix_value(i, j, param, kernel_size) / gaussian_matrix_norm
             )
-
             output[x, y, k] += matrix_val * input[xi, yi, k]
 
     # Ensure pixel values are in the range [0, 255]
@@ -100,6 +99,8 @@ def bilateral_filter_matrix_value(
     i: wp.int32, j: wp.int32, sigma_spatial: wp.float32, sigma_intensity: wp.float32, input: wp.array3d(dtype=wp.float32), 
     x: wp.int32, y: wp.int32, k: wp.int32, kernel_size: wp.int32, width: wp.int32, height: wp.int32
 ):
+    # if (x == 0 and y == 0):
+    #     print(kernel_size)
     xj = wp.float32(i - kernel_size // 2)
     yj = wp.float32(j - kernel_size // 2)
     spatial_weight = wp.exp(-(xj * xj + yj * yj) / (2.0 * sigma_spatial * sigma_spatial)) * (1.0 / (2.0 * sigma_spatial * sigma_spatial * np.pi))
@@ -126,8 +127,10 @@ def bilateral_filter_kernel(
     for i in range(kernel_size):
         for j in range(kernel_size):
             bilateral_matrix_norm += bilateral_filter_matrix_value(i, j, sigma_spatial, sigma_intensity, input, x, y, k, kernel_size, width, height)
-    if (x == 0 and y == 0):
-        print(bilateral_matrix_norm)
+            if (x == 0 and y == 0):
+                print(bilateral_matrix_norm)
+                print(bilateral_filter_matrix_value(i, j, sigma_spatial, sigma_intensity, input, x, y, k, kernel_size, width, height))
+                print("new")
 
     for i in range(kernel_size):
         for j in range(kernel_size):
@@ -138,7 +141,12 @@ def bilateral_filter_kernel(
             matrix_val = (
                 bilateral_filter_matrix_value(i, j, sigma_spatial, sigma_intensity, input, x, y, k, kernel_size, width, height) / bilateral_matrix_norm
             )
+            # if (x == 0 and y == 0):
+                # print(matrix_val)
+                # print(output[x, y, k])
+                # print(input[xi, yi, k])
             output[x, y, k] += matrix_val * input[xi, yi, k]
+            # output[x, y, k] += 0.00025 * input[xi, yi, k]
 
     output[x, y, k] = wp.clamp(output[x, y, k], 0.0, 255.0)
 
@@ -175,8 +183,6 @@ else:
     param = float(sys.argv[3])
     input_filename = sys.argv[4]
     output_filename = sys.argv[5]
-
-print(spatial_param, intensity_param)
 
 # Validate command line arguments
 assert kernel_size >= 0, "Kernel size must positive"
