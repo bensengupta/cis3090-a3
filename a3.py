@@ -99,16 +99,17 @@ def bilateral_filter_matrix_value(
     i: wp.int32, j: wp.int32, sigma_spatial: wp.float32, sigma_intensity: wp.float32, input: wp.array3d(dtype=wp.float32), 
     x: wp.int32, y: wp.int32, k: wp.int32, kernel_size: wp.int32, width: wp.int32, height: wp.int32
 ):
-    # if (x == 0 and y == 0):
-    #     print(kernel_size)
     xj = wp.float32(i - kernel_size // 2)
     yj = wp.float32(j - kernel_size // 2)
-    spatial_weight = wp.exp(-(xj * xj + yj * yj) / (2.0 * sigma_spatial * sigma_spatial)) * (1.0 / (2.0 * sigma_spatial * sigma_spatial * np.pi))
+    spatial_weight = wp.exp(-(xj * xj + yj * yj) / (2.0 * sigma_spatial * sigma_spatial)) / (2.0 * sigma_spatial * sigma_spatial * np.pi)
 
     xi = wp.clamp(x + i - kernel_size // 2, 0, width - 1)
     yi = wp.clamp(y + j - kernel_size // 2, 0, height - 1)
-    intensity_weight = wp.exp(-wp.abs(input[x, y, k] - input[xi, yi, k]) / (2.0 * sigma_intensity * sigma_intensity)) * (1.0 / (2.0 * sigma_intensity * sigma_intensity * np.pi))
+    intensity_diff = float(0.0)
+    for c in range(k + 1):  
+        intensity_diff += (input[x, y, c] - input[xi, yi, c]) ** 2.0
 
+    intensity_weight = wp.exp(-(intensity_diff) / (2.0 * sigma_intensity * sigma_intensity)) 
     return spatial_weight * intensity_weight
 
 
@@ -124,31 +125,21 @@ def bilateral_filter_kernel(
     x, y, k = wp.tid()
 
     bilateral_matrix_norm = float(0.0)
+    filtered_value = float(0.0)
     for i in range(kernel_size):
         for j in range(kernel_size):
-            bilateral_matrix_norm += bilateral_filter_matrix_value(i, j, sigma_spatial, sigma_intensity, input, x, y, k, kernel_size, width, height)
-            if (x == 0 and y == 0):
-                print(bilateral_matrix_norm)
-                print(bilateral_filter_matrix_value(i, j, sigma_spatial, sigma_intensity, input, x, y, k, kernel_size, width, height))
-                print("new")
-
-    for i in range(kernel_size):
-        for j in range(kernel_size):
-            # Handle edges
+            weight = bilateral_filter_matrix_value(i, j, sigma_spatial, sigma_intensity, input, x, y, k, kernel_size, width, height)
+            
             xi = wp.clamp(x + i - kernel_size // 2, 0, width - 1)
             yi = wp.clamp(y + j - kernel_size // 2, 0, height - 1)
 
-            matrix_val = (
-                bilateral_filter_matrix_value(i, j, sigma_spatial, sigma_intensity, input, x, y, k, kernel_size, width, height) / bilateral_matrix_norm
-            )
-            # if (x == 0 and y == 0):
-                # print(matrix_val)
-                # print(output[x, y, k])
-                # print(input[xi, yi, k])
-            output[x, y, k] += matrix_val * input[xi, yi, k]
-            # output[x, y, k] += 0.00025 * input[xi, yi, k]
+            filtered_value += weight * input[xi, yi, k]
+            bilateral_matrix_norm += weight
 
-    output[x, y, k] = wp.clamp(output[x, y, k], 0.0, 255.0)
+    if bilateral_matrix_norm > 0.0:
+        filtered_value /= bilateral_matrix_norm
+    output[x, y, k] = wp.clamp(filtered_value, 0.0, 255.0)
+
 
 # START
 # Basic argument checking
@@ -213,7 +204,6 @@ input_wp = wp.array(input, dtype=wp.float32, device=device)
 output_wp = wp.zeros(input_wp.shape, dtype=wp.float32, device=device)
 
 if alg_type == "-b":
-    print(kernel_size, spatial_param, intensity_param, kernel)
     wp.launch(
         kernel=kernel,
         dim=input_wp.shape,
