@@ -14,12 +14,12 @@ from PIL import Image
 def gaussian_matrix_value(
     i: wp.int32, j: wp.int32, sigma: wp.float32, kernel_size: wp.int32
 ):
-    # x = wp.float32(i - kernel_size // 2)
-    # y = wp.float32(j - kernel_size // 2)
-    x = wp.float32(i)
-    y = wp.float32(j)
+    x = wp.float32(i - kernel_size // 2)
+    y = wp.float32(j - kernel_size // 2)
 
-    return wp.exp(-(x * x + y * y) / (2.0 * sigma * sigma)) * (1.0 / (2.0 * sigma * sigma * np.pi))
+    return wp.exp(-(x * x + y * y) / (2.0 * sigma * sigma)) * (
+        1.0 / (2.0 * sigma * sigma * np.pi)
+    )
 
 
 @wp.kernel
@@ -30,28 +30,21 @@ def gaussian_blur_kernel(
     param: wp.float32,
 ):
     gaussian_matrix_norm = float(0.0)
-    loop_range = int(3.0 * param)
 
-    # for i in range(kernel_size):
-    #     for j in range(kernel_size):
-    for i in range(-loop_range, loop_range + 1):
-        for j in range(-loop_range, loop_range + 1):
+    for i in range(kernel_size):
+        for j in range(kernel_size):
             gaussian_matrix_norm += gaussian_matrix_value(i, j, param, kernel_size)
 
     width, height = input.shape[0], input.shape[1]
     x, y, k = wp.tid()
 
     # Apply the kernel to the input pixel
-    # for i in range(kernel_size):
-    #     for j in range(kernel_size):
-    for i in range(-loop_range, loop_range + 1):
-        for j in range(-loop_range, loop_range + 1):
+    for i in range(kernel_size):
+        for j in range(kernel_size):
             # Edge handling strategy: "extend"
             # https://en.wikipedia.org/wiki/Kernel_(image_processing)#Edge_handling
-            # xi = wp.clamp(x + i - kernel_size // 2, 0, width - 1)
-            # yi = wp.clamp(y + j - kernel_size // 2, 0, height - 1)
-            xi = wp.clamp(x + i, 0, width - 1)
-            yi = wp.clamp(y + j, 0, height - 1)
+            xi = wp.clamp(x + i - kernel_size // 2, 0, width - 1)
+            yi = wp.clamp(y + j - kernel_size // 2, 0, height - 1)
 
             matrix_val = (
                 gaussian_matrix_value(i, j, param, kernel_size) / gaussian_matrix_norm
